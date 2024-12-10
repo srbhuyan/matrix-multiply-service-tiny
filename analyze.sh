@@ -2,12 +2,12 @@
 
 usage()
 {
-  echo "Usage: $0 <algorithm> <iva> <iva data> <iva data file> <core count file> <power profile file> <time serial analytics file> <time parallel analytics file> <space serial analytics file> <space parallel analytics file> <power serial analytics file> <power parallel analytics file> <energy serial analytics file> <energy parallel analytics file> <speedup analytics file> <freeup analytics file> <powerup analytics file> <energyup analytics file> <id> <repo> <repo name> <start time> <progress>"
+  echo "Usage: $0 <algorithm> <iva> <iva data> <iva data file> <core count file> <power profile file> <time serial analytics file> <time parallel analytics file> <space serial analytics file> <space parallel analytics file> <power serial analytics file> <power parallel analytics file> <energy serial analytics file> <energy parallel analytics file> <speedup analytics file> <freeup analytics file> <powerup analytics file> <energyup analytics file> <id> <repo> <repo name> <start time> <progress> <service location>"
   exit 1
 }
 
-if [ "$#" -ne 29 ]; then
-    echo "Invalid number of parameters. Expected:29 Passed:$#"
+if [ "$#" -ne 30 ]; then
+    echo "Invalid number of parameters. Expected:30 Passed:$#"
     usage
 fi
 
@@ -40,6 +40,7 @@ repo=${26}
 repo_name=${27}
 start_time=${28}
 progress=${29}
+service_location=${30}
 
 serial_measurement=serial.csv
 parallel_measurement=parallel.csv
@@ -52,6 +53,10 @@ poly_max_degree_vals=(1 2 3 4 5 6 7 8 9 10)
 # parallel code generation config
 parallel_plugin_so=MyRewriter.so
 parallel_plugin_name=rew
+
+# service code generation config
+service_plugin_so=ThmgrRewriter.so
+service_plugin_name=thrw
 
 # cleanup
 rm $time_serial_analytics_file 2> /dev/null
@@ -98,14 +103,28 @@ make -f Makefile-serial
 main_file_extn="${main_file##*.}"
 main_file_noextn="${main_file%.*}"
 main_file_parallel="$main_file_noextn"_parallel."$main_file_extn"
+main_file_service="$main_file_noextn"_service."$main_file_extn"
 
 algo_parallel="$algo"_parallel
+lib_service=lib"$algo"_service.so
 
 # generate TALP parallel code
 clang -fplugin=$parallel_plugin_so -Xclang -plugin -Xclang $parallel_plugin_name -Xclang -plugin-arg-rew -Xclang -target-function -Xclang -plugin-arg-rew -Xclang $target_fn -Xclang -plugin-arg-rew -Xclang -out-file -Xclang -plugin-arg-rew -Xclang $main_file_parallel -Xclang -plugin-arg-rew -Xclang -iva -Xclang -plugin-arg-rew -Xclang $target_fn_iva_name -Xclang -plugin-arg-rew -Xclang -iva-start -Xclang -plugin-arg-rew -Xclang $target_fn_iva_start -Xclang -plugin-arg-rew -Xclang -iva-end -Xclang -plugin-arg-rew -Xclang $target_fn_iva_end -Xclang -plugin-arg-rew -Xclang -argc -Xclang -plugin-arg-rew -Xclang $argc -c $main_file
 
 # make - parallel
 make -f Makefile-parallel
+
+# generate TALP service code
+clang -fplugin=$service_plugin_so -Xclang -plugin -Xclang $service_plugin_name -Xclang -plugin-arg-thrw -Xclang -out-file -Xclang -plugin-arg-thrw -Xclang $main_file_service -c $main_file
+
+# make - service
+make -f Makefile-service
+
+# deploy - service
+cp $lib_service /usr/lib/
+
+# load - service
+curl -D - --header "Content-Type: application/json" --output - --request POST --data '{"id": 0, "lib": "'$lib_service'"}' $service_location/load;
 
 # serial run
 
@@ -197,7 +216,7 @@ for i in ${core[@]}
 do
   # time
   start=`date +%s.%N`;\
-  ./$algo_parallel $iva_data $iva_data $i;\
+  curl -D - --header "Content-Type: application/json" --output - --request POST --data '{"id": 1, "lib": "'$lib_service'", "core": '"$i"', "argv": ["main", '\""$iva_data"\"','\""$iva_data"\"']}' $service_location/run;\
   end=`date +%s.%N`;\
   time_parallel+=(`printf '%.8f' $( echo "$end - $start" | bc -l )`);
 

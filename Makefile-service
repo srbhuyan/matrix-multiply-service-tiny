@@ -1,0 +1,7 @@
+all: service
+
+service:
+	gcc -std=c99 -o libmain_service.so -fPIC -shared main_service.c
+
+clean:
+	rm libmain_service.so

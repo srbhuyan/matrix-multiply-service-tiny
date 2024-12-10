@@ -1,7 +1,7 @@
-all: serial
+all: parallel
 
-serial:
-	gcc -std=c99 -o main main.c -lpthread -lthpool
+parallel:
+	gcc -std=c99 -o main_parallel main_parallel.c -lpthread -lthpool
 
 clean:
-	rm main
+	rm main_parallel
